@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
 import { useSWRConfig } from "swr";
-import { toast } from "sonner";
 import { ArrowUpRight, Sparkles, CalendarDays, TrendingUp, TrendingDown } from "lucide-react";
-import { useApi, http, errMsg, fmtINR, fmtPct, fmtSigned, tone } from "@/lib/api";
+import { useApi, fmtINR, fmtPct, fmtSigned, tone } from "@/lib/api";
 import { PageTitle, Skeleton, EmptyPortfolio, ErrorBox, CoinIcon } from "@/components/Bits";
 import { PerformanceChart, AllocationChart, ScoreRing, riskTone } from "@/components/Charts";
 
@@ -102,13 +101,9 @@ export function Overview({ s }) {
 
 export default function Dashboard() {
   const { data: s, error, isLoading, mutate } = useApi("/portfolio/summary");
-  const refresh = useRefreshAll();
-  const demo = async () => {
-    try { await http.post("/holdings/demo"); toast.success("Sample portfolio loaded — edit it anytime"); refresh(); } catch (e) { toast.error(errMsg(e)); }
-  };
   if (error) return <ErrorBox error={error} retry={mutate} />;
   if (isLoading) return <div className="grid sm:grid-cols-4 gap-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28" />)}<Skeleton className="h-72 sm:col-span-4" /></div>;
-  if (!s.holdings.length) return (<><PageTitle title="Dashboard" sub="Your crypto portfolio at a glance." /><EmptyPortfolio onDemo={demo} /></>);
+  if (!s.holdings.length) return (<><PageTitle title="Dashboard" sub="Your crypto portfolio at a glance." /><EmptyPortfolio /></>);
   return (
     <div className="space-y-5">
       <PageTitle title="Dashboard" sub="How is my portfolio doing, how risky is it, and what needs attention?" />

@@ -52,17 +52,13 @@ export default function Portfolio() {
     try { await http.delete(`/holdings/${del.holding_id}`); toast.success(`${del.name} removed`); refresh(); } catch (e) { toast.error(errMsg(e)); }
     setDel(null);
   };
-  const demo = async () => {
-    try { await http.post("/holdings/demo"); toast.success("Sample portfolio loaded"); refresh(); } catch (e) { toast.error(errMsg(e)); }
-  };
-
   return (
     <div>
       <PageTitle title="My Portfolio" sub="Manually track what you own. Values, P&L and allocation are calculated on the server with live prices.">
         <Button data-testid="add-holding-btn" onClick={() => setDlg({ open: true, holding: null })} className="rounded-full"><Plus className="h-4 w-4 mr-1" />Add holding</Button>
       </PageTitle>
       {error ? <ErrorBox error={error} retry={mutate} /> : isLoading ? <Skeleton className="h-80" /> : !s.holdings.length ? (
-        <EmptyPortfolio onAdd={() => setDlg({ open: true, holding: null })} onDemo={demo} />
+        <EmptyPortfolio onAdd={() => setDlg({ open: true, holding: null })} />
       ) : (
         <>
           <Overview s={s} />

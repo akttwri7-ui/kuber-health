@@ -10,7 +10,7 @@ export default function Risk() {
   const { data: r, error, isLoading, mutate } = useApi("/risk");
   if (error) return <ErrorBox error={error} retry={mutate} />;
   if (isLoading) return <Skeleton className="h-96" />;
-  if (!r.allocations.length) return (<><PageTitle title="Risk Monitor" /><EmptyPortfolio /></>);
+  if (!r.allocations.length) return (<><PageTitle title="Risk Monitor" /><EmptyPortfolio message="Risk alerts are only generated from your saved holdings. Add your investments to start monitoring drawdowns and concentration." /></>);
   const thr = r.settings.drawdown_thresholds;
   const limit = r.settings.concentration_limit;
   const dd = r.drawdown_30d;

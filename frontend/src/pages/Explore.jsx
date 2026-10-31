@@ -51,7 +51,7 @@ export default function Explore() {
         <p className="text-emerald-400 text-xs font-semibold tracking-widest uppercase relative">Crypto Explore</p>
         <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl mt-3 max-w-3xl relative">Research any coin. In rupees. In seconds.</h1>
         <div className="mt-7 max-w-2xl relative z-10"><CoinSearch big onSelect={go} testid="explore-search" /></div>
-        <div className="mt-4 relative">{data && <PriceStatus status={data.status === "cached" ? "stale" : data.status === "unavailable" ? "demo" : "live"} />}{data?.source && <span className="text-[11px] text-slate-500 ml-2">Market data: {data.source}</span>}</div>
+        <div className="mt-4 relative">{data && <PriceStatus status={data.status === "cached" ? "stale" : data.status === "unavailable" ? "unavailable" : "live"} />}{data?.source && <span className="text-[11px] text-slate-500 ml-2">Market data: {data.source}</span>}</div>
       </div>
 
       {error ? <ErrorBox error={error} retry={mutate} /> : isLoading ? <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-28" />)}</div> : (

@@ -26,6 +26,13 @@ Upgrade Kuber Crypto into an AI-powered crypto portfolio tracker & Portfolio Hea
 - Data resilience: CoinGecko → CoinPaprika → Binance fallbacks, Mongo-persisted API cache (api_cache), CG id index (coin_index)
 - Tested iteration_2: backend 61/61; fixed after: id mapping, 402 backoff, mobile chart overflow, stream race, oscillator axis format, S/R clustering
 
+## Iteration 3 (2026-06) – Manual-only holdings
+- Removed sample portfolio endpoint/buttons and invented fallback prices (status "unavailable" instead)
+- New empty state ("Your portfolio is waiting to grow.") with ₹0 metrics, allocation "No data available", health "Not available"
+- Health/Risk/AI Analyst respect empty portfolios (AI returns fixed message, no LLM call); Cancel button in holding form
+- DB cleanup: removed 24 auto-generated sample holdings + matching tx + derived notifications across 6 test accounts; genuine holdings kept
+- Verified via /app/scripts/accept.sh (new user empty, add/edit/delete math, isolation 404)
+
 ## Backlog
 - P1: Sell/partial-sell transactions with realized P&L; transaction history UI
 - P2: Weekly email digest, CSV import, price alerts per coin, shadcn calendar date pickers

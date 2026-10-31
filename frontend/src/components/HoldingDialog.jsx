@@ -105,9 +105,12 @@ export default function HoldingDialog({ open, onOpenChange, holding, onSaved, pr
           <div><Label>Purchase date</Label><Input data-testid="holding-date-input" type="date" max={today()} className="mt-1.5 h-11" value={f.purchase_date} onChange={(e) => setF({ ...f, purchase_date: e.target.value })} /></div>
           {q > 0 && p > 0 && <p className="text-sm text-slate-400" data-testid="holding-invested-preview">Invested amount: <span className="font-mono-num text-slate-100">{fmtINR(q * p, true)}</span></p>}
           {err && <p className="text-sm text-rose-400" data-testid="holding-error">{err}</p>}
-          <Button data-testid="holding-save-btn" onClick={save} disabled={busy} className="w-full h-11 rounded-full font-semibold">
-            {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editing ? "Save changes" : "Add to portfolio"}
-          </Button>
+          <div className="flex gap-3">
+            <Button data-testid="holding-cancel-btn" variant="outline" onClick={() => onOpenChange(false)} className="flex-1 h-11 rounded-full bg-transparent">Cancel</Button>
+            <Button data-testid="holding-save-btn" onClick={save} disabled={busy} className="flex-[2] h-11 rounded-full font-semibold">
+              {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}{editing ? "Save changes" : "Save holding"}
+            </Button>
+          </div>
           <p className="text-[11px] text-slate-500 text-center">Wallet transfers aren't purchases — only record coins you bought, at the price you paid.</p>
         </div>
       </DialogContent>

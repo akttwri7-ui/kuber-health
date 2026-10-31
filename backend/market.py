@@ -9,7 +9,7 @@ _cache = {}
 _locks = {}
 _fail = {}
 
-# Labeled demo prices (INR) used only when the live API is unreachable and nothing is cached
+# Popular coins for the coin picker (names only; prices are never taken from here)
 DEMO_PRICES = {
     "bitcoin": ("btc", "Bitcoin", 7300000, 1.2, 3.5),
     "ethereum": ("eth", "Ethereum", 280000, -0.8, 2.1),
@@ -140,12 +140,7 @@ async def get_markets(pairs):
         return {m["id"]: {"price": m.get("current_price") or 0, "change_24h": m.get("price_change_percentage_24h") or 0,
                           "change_7d": m.get("price_change_percentage_7d_in_currency"), "image": m.get("image"),
                           "symbol": m.get("symbol"), "name": m.get("name")} for m in data}, "stale"
-    out = {}
-    for i in ids:
-        if i in DEMO_PRICES:
-            s, n, p, c24, c7 = DEMO_PRICES[i]
-            out[i] = {"price": p, "change_24h": c24, "change_7d": c7, "image": None, "symbol": s, "name": n}
-    return out, "demo"
+    return {}, "unavailable"
 
 
 async def get_history(coin_id, symbol, days, inr_price):

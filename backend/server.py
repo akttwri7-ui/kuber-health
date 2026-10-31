@@ -285,23 +285,6 @@ async def list_tx(user=Depends(get_current_user)):
     return await db.transactions.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
 
 
-@api.post("/holdings/demo")
-async def load_demo(user=Depends(get_current_user)):
-    uid = user["user_id"]
-    if await db.holdings.count_documents({"user_id": uid}):
-        raise HTTPException(400, "Demo portfolio can only be loaded into an empty portfolio")
-    today = date.today()
-    demo = [("bitcoin", "btc", "Bitcoin", 0.05, 6500000, 120), ("ethereum", "eth", "Ethereum", 0.8, 260000, 90),
-            ("solana", "sol", "Solana", 6, 15500, 60), ("dogecoin", "doge", "Dogecoin", 4000, 18, 30)]
-    for cid, s, n, q, p, d in demo:
-        h = {"holding_id": new_id("hold"), "user_id": uid, "coin_id": cid, "symbol": s, "name": n, "image": None,
-             "quantity": q, "avg_price": p, "purchase_date": (today - timedelta(days=d)).isoformat(),
-             "notes": "Sample holding — edit or delete anytime", "created_at": now().isoformat()}
-        await db.holdings.insert_one(dict(h))
-        await log_tx(uid, "buy", h, q, p)
-    return {"ok": True}
-
-
 @api.get("/coins/search")
 async def coins_search(q: str = "", user=Depends(get_current_user)):
     return await search_coins(q)
@@ -507,6 +490,9 @@ async def clear_chat(user=Depends(get_current_user)):
 async def chat(body: ChatIn, user=Depends(get_current_user)):
     uid = user["user_id"]
     summary, vol, health, alerts, _ = await full_analysis(uid)
+    if not summary["holdings"]:
+        return cached_stream("You haven't added any holdings yet, so I can't give a personalised portfolio analysis. "
+                             "Add your investments in **My Portfolio** (coin, quantity, average buy price and date) and I'll analyse your real numbers.")
     goals_raw = await db.goals.find({"user_id": uid}, {"_id": 0}).to_list(20)
     goals = [goal_progress(g, summary["total_value"]) for g in goals_raw]
     prev = await db.chat_messages.find({"user_id": uid}, {"_id": 0}).sort("created_at", -1).to_list(6)

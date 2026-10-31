@@ -61,7 +61,7 @@ export default function Health() {
   if (error) return <ErrorBox error={error} retry={mutate} />;
   if (isLoading) return <Skeleton className="h-96" />;
   const h = data.health;
-  if (!h) return (<><PageTitle title="Portfolio Health" sub="Your personalised diagnosis appears once you add holdings." /><EmptyPortfolio /></>);
+  if (!h) return (<><PageTitle title="Portfolio Health" sub="Your personalised diagnosis appears once you add holdings." /><EmptyPortfolio message="Add holdings to calculate your portfolio health. The score is only ever calculated from investments you have saved." /></>);
   const custom = !h.categories.find((c) => c.key === "allocation").using_default_targets;
   return (
     <div className="space-y-5">

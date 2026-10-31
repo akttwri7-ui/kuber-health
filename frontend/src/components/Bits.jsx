@@ -7,12 +7,12 @@ export function PriceStatus({ status, updated, compact }) {
   const map = {
     live: { t: "Live prices", c: "text-emerald-400 bg-emerald-500/10", I: Wifi },
     stale: { t: "Cached prices", c: "text-amber-400 bg-amber-500/10", I: Database },
-    demo: { t: "DEMO prices (live feed unavailable)", c: "text-rose-300 bg-rose-500/10", I: WifiOff },
+    unavailable: { t: "Prices unavailable", c: "text-rose-300 bg-rose-500/10", I: WifiOff },
   };
   const m = map[status] || map.live;
   return (
     <span data-testid="price-status" className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${m.c}`}>
-      <m.I className="h-3 w-3" />{compact ? (status === "live" ? "Live" : status === "stale" ? "Cached" : "Demo") : m.t}
+      <m.I className="h-3 w-3" />{compact ? (status === "live" ? "Live" : status === "stale" ? "Cached" : "Unavailable") : m.t}
       {!compact && updated && status === "live" && <span className="text-slate-500">· {new Date(updated).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>}
     </span>
   );
@@ -32,16 +32,32 @@ export function PageTitle({ title, sub, children, ai }) {
 
 export const Skeleton = ({ className = "h-24" }) => <div className={`shimmer ${className}`} />;
 
-export function EmptyPortfolio({ onDemo, onAdd }) {
+function ZeroStat({ label, value, testid }) {
   return (
-    <div className="k-card p-10 sm:p-14 text-center fade-up" data-testid="empty-portfolio">
+    <div className="rounded-xl bg-white/[0.03] border border-white/5 p-4 text-left" data-testid={testid}>
+      <p className="text-[11px] text-slate-500 uppercase tracking-wider">{label}</p>
+      <p className={`mt-1 ${value.startsWith("₹") ? "font-mono-num text-lg text-slate-300" : "text-sm text-slate-500 font-medium pt-1"}`}>{value}</p>
+    </div>
+  );
+}
+
+export function EmptyPortfolio({ onAdd, message }) {
+  return (
+    <div className="k-card p-8 sm:p-14 text-center fade-up relative overflow-hidden" data-testid="empty-portfolio">
+      <div className="absolute -top-24 left-1/2 -translate-x-1/2 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
       <div className="coin-float mx-auto h-20 w-20 rounded-full bg-gradient-to-br from-amber-300 to-amber-600 grid place-items-center font-display text-3xl text-amber-950 shadow-[0_0_60px_rgba(245,158,11,0.35)]">₹</div>
-      <h2 className="font-display text-xl mt-6">Your vault is empty</h2>
-      <p className="text-slate-400 text-sm mt-2 max-w-md mx-auto">Add three coins and Kuber will instantly diagnose your portfolio's health. Or load a sample portfolio to explore.</p>
-      <div className="flex gap-3 justify-center mt-7 flex-wrap">
-        {onAdd ? <Button data-testid="empty-add-holding-btn" onClick={onAdd} className="rounded-full px-6">Add your first coin</Button>
-          : <Button asChild className="rounded-full px-6"><Link to="/portfolio" data-testid="empty-go-portfolio-btn">Add your first coin</Link></Button>}
-        {onDemo && <Button data-testid="load-demo-btn" variant="outline" onClick={onDemo} className="rounded-full px-6 bg-transparent">Load sample portfolio</Button>}
+      <h2 className="font-display text-xl sm:text-2xl mt-6" data-testid="empty-portfolio-title">Your portfolio is waiting to grow.</h2>
+      <p className="text-slate-400 text-sm mt-3 max-w-lg mx-auto" data-testid="empty-portfolio-message">{message || "You haven't added any cryptocurrency holdings yet. Start by manually adding your investments to track their performance and portfolio health."}</p>
+      <div className="mt-7">
+        {onAdd ? <Button data-testid="empty-add-holding-btn" onClick={onAdd} className="rounded-full px-7 h-11">Add Your First Holding</Button>
+          : <Button asChild className="rounded-full px-7 h-11"><Link to="/portfolio" data-testid="empty-go-portfolio-btn">Add Your First Holding</Link></Button>}
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mt-10 max-w-4xl mx-auto" data-testid="empty-metrics">
+        <ZeroStat label="Total portfolio value" value="₹0" testid="empty-total-value" />
+        <ZeroStat label="Total invested" value="₹0" testid="empty-total-invested" />
+        <ZeroStat label="Total profit / loss" value="₹0" testid="empty-total-pnl" />
+        <ZeroStat label="Portfolio allocation" value="No data available" testid="empty-allocation" />
+        <ZeroStat label="Portfolio health score" value="Not available" testid="empty-health" />
       </div>
     </div>
   );
