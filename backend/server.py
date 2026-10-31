@@ -8,7 +8,6 @@ import os
 import json
 import uuid
 import logging
-import secrets
 from datetime import datetime, timezone, timedelta, date
 from typing import Optional, Dict, List
 
@@ -23,6 +22,9 @@ from pydantic import BaseModel, Field, field_validator, EmailStr
 
 from market import search_coins
 from analytics import build_summary, build_history, volatility_and_drawdown, compute_health, compute_alerts, goal_progress
+from market import _usd_inr as get_fx
+import explore
+import ta
 from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -535,6 +537,174 @@ async def chat(body: ChatIn, user=Depends(get_current_user)):
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+# ---------------- Explore & Chart Analyst ----------------
+def llm_stream(system, prompt, on_done=None):
+    llm = LlmChat(api_key=os.environ["EMERGENT_LLM_KEY"], session_id=new_id("s"), system_message=system).with_model("anthropic", "claude-opus-5-5")
+
+    async def gen():
+        full = ""
+        try:
+            async for ev in llm.stream_message(UserMessage(text=prompt)):
+                if isinstance(ev, TextDelta):
+                    full += ev.content
+                    yield f"data: {json.dumps({'delta': ev.content})}\n\n"
+                elif isinstance(ev, StreamDone):
+                    break
+            if on_done and full:
+                await on_done(full)
+        except Exception as e:
+            logger.exception("AI error: %s", e)
+            yield f"data: {json.dumps({'error': 'The AI analyst is unavailable right now. Please try again shortly.'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def cached_stream(text):
+    async def gen():
+        yield f"data: {json.dumps({'delta': text})}\n\n"
+        yield "data: [DONE]\n\n"
+    return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@api.get("/explore/overview")
+async def explore_overview(user=Depends(get_current_user)):
+    return await explore.overview()
+
+
+@api.get("/explore/search")
+async def explore_search(q: str = "", user=Depends(get_current_user)):
+    return await explore.search(q[:50])
+
+
+@api.get("/explore/news")
+async def explore_news(user=Depends(get_current_user)):
+    return await explore.general_news()
+
+
+@api.get("/coins/{cid}/detail")
+async def coin_detail(cid: str, symbol: Optional[str] = None, user=Depends(get_current_user)):
+    d = await explore.coin_detail(cid, symbol)
+    if not d:
+        raise HTTPException(404, "Market data for this coin is unavailable right now")
+    h = await db.holdings.find_one({"user_id": user["user_id"], "coin_id": cid}, {"_id": 0})
+    d["holding"] = h and {"quantity": h["quantity"], "avg_price": h["avg_price"], "value": h["quantity"] * (d["price"] or 0),
+                          "pnl": h["quantity"] * ((d["price"] or 0) - h["avg_price"]), "holding_id": h["holding_id"]}
+    return d
+
+
+@api.get("/coins/{cid}/history")
+async def coin_history(cid: str, days: str = "30", symbol: Optional[str] = None, user=Depends(get_current_user)):
+    if days not in ("1", "7", "30", "90", "365", "max"):
+        raise HTTPException(400, "Invalid period")
+    return await explore.coin_history(cid, symbol, days)
+
+
+@api.get("/coins/{cid}/news")
+async def coin_news(cid: str, name: str, symbol: str = "", user=Depends(get_current_user)):
+    return await explore.coin_news(name[:60], symbol[:15])
+
+
+RESEARCH_PROMPT = """You are Kuber AI, a crypto research assistant for beginner investors in India (currency INR ₹).
+Write a research summary using ONLY the DATA JSON below (market data from {source} and recent news headlines).
+Use these markdown sections exactly: ## What it does, ## Main use cases, ## Recent developments, ## Historical performance, ## Major risks, ## Tokenomics considerations.
+Rules: Under "Recent developments" only reference the provided headlines and name their source; if none, say no recent headlines were retrieved.
+Never invent numbers, dates, partnerships or events. If data is missing, say it is unavailable. No price predictions or buy/sell advice.
+Keep it under 350 words, plain language, use **bold** for key figures.
+
+DATA:
+{data}"""
+
+
+class ResearchIn(BaseModel):
+    symbol: str = Field(min_length=1, max_length=15)
+    refresh: bool = False
+
+
+@api.post("/coins/{cid}/research")
+async def coin_research(cid: str, body: ResearchIn, user=Depends(get_current_user)):
+    day = date.today().isoformat()
+    if not body.refresh:
+        c = await db.coin_research.find_one({"coin_id": cid, "day": day}, {"_id": 0})
+        if c:
+            return cached_stream(c["content"])
+    d = await explore.coin_detail(cid, body.symbol)
+    if not d:
+        raise HTTPException(404, "Coin data unavailable, so a research summary can't be generated")
+    news = await explore.coin_news(d["name"], d["symbol"])
+    data = {k: d.get(k) for k in ("name", "symbol", "rank", "price", "market_cap", "fdv", "volume", "circulating_supply", "total_supply",
+                                  "max_supply", "ath", "ath_date", "ath_change", "atl", "atl_date", "change", "categories",
+                                  "hashing_algorithm", "platforms", "genesis_date")}
+    data["description"] = (d.get("description") or "")[:1500]
+    data["news_headlines"] = [{"title": n["title"], "source": n["source"], "date": n["published_at"]} for n in news[:8]]
+
+    async def save(text):
+        await db.coin_research.update_one({"coin_id": cid, "day": day}, {"$set": {"content": text, "created_at": now().isoformat()}}, upsert=True)
+
+    return llm_stream(RESEARCH_PROMPT.format(source=d["source"], data=json.dumps(data, default=str)), f"Write the research summary for {d['name']}.", save)
+
+
+async def load_chart(symbol, interval):
+    if interval not in ta.INTERVALS:
+        raise HTTPException(400, "Unsupported interval")
+    k, st = await explore.binance_klines(symbol, interval, ta.INTERVALS[interval])
+    fx = await get_fx()
+    if not k or not fx:
+        raise HTTPException(404, f"Candlestick data isn't available for {symbol.upper()} (no USDT market on our data provider)")
+    candles = [{"time": r[0] // 1000, "open": float(r[1]) * fx, "high": float(r[2]) * fx, "low": float(r[3]) * fx,
+                "close": float(r[4]) * fx, "volume": float(r[5])} for r in k]
+    series, snap = ta.compute(candles)
+    return candles, series, snap, st, fx
+
+
+@api.get("/chart/candles")
+async def chart_candles(symbol: str, interval: str = "1h", user=Depends(get_current_user)):
+    candles, series, snap, st, fx = await load_chart(symbol[:15], interval)
+    return {"candles": candles, "series": series, "snapshot": snap, "status": "live" if st == "live" else "cached",
+            "source": "Binance spot (SYMBOL/USDT), converted to INR at the current USD/INR rate", "usd_inr": fx,
+            "fetched_at": now().isoformat()}
+
+
+CHART_PROMPT = """You are Kuber AI Chart Analyst. Explain technical analysis simply for beginner crypto investors in India (prices in INR ₹).
+You are analysing {name} ({symbol}) on the {interval} timeframe. Use ONLY the computed data below — candles were fetched at {fetched}.
+Never invent indicator values, levels or patterns; quote the numbers given. If a value is null, say it's unavailable (insufficient data).
+No price predictions, no guarantees, no buy/sell instructions — describe conditions and risks only.
+{format}
+
+COMPUTED_SNAPSHOT (indicators: RSI14, MACD 12/26/9, SMA20/50, EMA20, Bollinger 20/2; support/resistance from clustered swing pivots):
+{snap}
+
+LAST_30_CANDLES [time_utc, open, high, low, close, volume]:
+{candles}"""
+
+FULL_FORMAT = """Use these markdown sections: ## Market structure, ## Current trend (start with exactly one word: Bullish, Bearish or Sideways), ## Support levels, ## Resistance levels, ## Indicators (RSI, MACD, moving averages, Bollinger), ## Volume, ## Risk factors, ## Summary. Keep it under 380 words; use **bold** for key numbers."""
+
+
+class ChartAskIn(BaseModel):
+    symbol: str = Field(min_length=1, max_length=15)
+    name: str = Field(min_length=1, max_length=80)
+    interval: str
+    question: Optional[str] = Field(default=None, max_length=600)
+    context: List[Dict[str, str]] = []
+
+
+@api.post("/chart/analyze")
+async def chart_analyze(body: ChartAskIn, user=Depends(get_current_user)):
+    candles, series, snap, _, _ = await load_chart(body.symbol, body.interval)
+    if len(candles) < 30:
+        return cached_stream("Not enough candles were returned for this timeframe, so a reliable analysis is unavailable.")
+    rows = [[datetime.fromtimestamp(c["time"], timezone.utc).strftime("%Y-%m-%d %H:%M"), round(c["open"], 4), round(c["high"], 4),
+             round(c["low"], 4), round(c["close"], 4), round(c["volume"], 2)] for c in candles[-30:]]
+    rnd = lambda v: round(v, 4) if isinstance(v, float) else v
+    snap_r = {k: ([{kk: rnd(vv) for kk, vv in x.items()} for x in v] if isinstance(v, list) else rnd(v)) for k, v in snap.items()}
+    fmt = FULL_FORMAT if not body.question else "Answer the user's question directly in 2-4 short paragraphs or bullets, referring to this coin and timeframe."
+    system = CHART_PROMPT.format(name=body.name, symbol=body.symbol.upper(), interval=body.interval, fetched=now().strftime("%Y-%m-%d %H:%M UTC"),
+                                 format=fmt, snap=json.dumps(snap_r), candles=json.dumps(rows))
+    convo = "\n".join(f"{m.get('role', 'user').upper()}: {m.get('content', '')[:1200]}" for m in body.context[-4:])
+    prompt = (f"Earlier in this chart session:\n{convo}\n\n" if convo else "") + (f"QUESTION: {body.question}" if body.question else "Analyse the chart now.")
+    return llm_stream(system, prompt)
+
+
 @api.get("/")
 async def root():
     return {"message": "Kuber Crypto API"}
@@ -545,8 +715,9 @@ app.include_router(api)
 origins = os.environ.get("CORS_ORIGINS", "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=origins != "*",
-    allow_origins=origins.split(","),
+    allow_credentials=True,
+    allow_origins=[] if origins == "*" else origins.split(","),
+    allow_origin_regex=r"https://([a-z0-9-]+\.)*(emergentagent\.com|emergent\.host)" if origins == "*" else None,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -49,7 +49,7 @@ function CoinPicker({ value, onPick }) {
   );
 }
 
-export default function HoldingDialog({ open, onOpenChange, holding, onSaved }) {
+export default function HoldingDialog({ open, onOpenChange, holding, onSaved, preset }) {
   const editing = !!holding;
   const [coin, setCoin] = useState(null);
   const [f, setF] = useState({ quantity: "", avg_price: "", purchase_date: today(), notes: "" });
@@ -63,10 +63,10 @@ export default function HoldingDialog({ open, onOpenChange, holding, onSaved }) 
       setCoin({ coin_id: holding.coin_id, symbol: holding.symbol, name: holding.name, image: holding.image });
       setF({ quantity: String(holding.quantity), avg_price: String(holding.avg_price), purchase_date: holding.purchase_date, notes: holding.notes || "" });
     } else {
-      setCoin(null);
+      setCoin(preset || null);
       setF({ quantity: "", avg_price: "", purchase_date: today(), notes: "" });
     }
-  }, [open, holding]);
+  }, [open, holding]); // eslint-disable-line
 
   const q = parseFloat(f.quantity), p = parseFloat(f.avg_price);
   const save = async () => {

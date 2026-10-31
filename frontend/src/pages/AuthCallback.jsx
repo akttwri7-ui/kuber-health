@@ -16,7 +16,7 @@ export default function AuthCallback() {
     http.post("/auth/google/session", { session_id: sid })
       .then(({ data }) => {
         setUser(data);
-        navigate("/dashboard", { replace: true });
+        navigate("/home", { replace: true });
       })
       .catch(() => {
         setUser(false);

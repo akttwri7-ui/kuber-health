@@ -78,6 +78,28 @@ export function HoldingsMini({ rows }) {
   );
 }
 
+export function Overview({ s }) {
+  return (
+    <div className="space-y-5 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+        <Stat big label="Total value" value={fmtINR(s.total_value)} sub={`${fmtSigned(s.change_24h)} (${fmtPct(s.change_24h_pct)}) 24h`} subTone={tone(s.change_24h)} testid="stat-total-value" />
+        <Stat label="Invested" value={fmtINR(s.total_invested)} testid="stat-invested" />
+        <Stat label="Unrealised P&L" value={fmtSigned(s.pnl)} subTone={tone(s.pnl)} testid="stat-pnl" />
+        <Stat label="P&L %" value={fmtPct(s.pnl_pct)} subTone={tone(s.pnl_pct)} testid="stat-pnl-pct" />
+        <Stat label="24h change" value={fmtPct(s.change_24h_pct)} subTone={tone(s.change_24h_pct)} testid="stat-24h" />
+      </div>
+      <div className="grid lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2"><PerformanceChart /></div>
+        <AllocationChart holdings={s.holdings} />
+      </div>
+      <div className="grid lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2"><HealthTeaser /></div>
+        <Weekly w={s.weekly} />
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data: s, error, isLoading, mutate } = useApi("/portfolio/summary");
   const refresh = useRefreshAll();

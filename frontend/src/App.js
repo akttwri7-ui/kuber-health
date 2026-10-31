@@ -5,7 +5,9 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
 import Layout from "@/components/Layout";
-import Dashboard from "@/pages/Dashboard";
+import Explore from "@/pages/Explore";
+import CoinDetail from "@/pages/CoinDetail";
+import ChartAnalyst from "@/pages/ChartAnalyst";
 import Portfolio from "@/pages/Portfolio";
 import Health from "@/pages/Health";
 import Analyst from "@/pages/Analyst";
@@ -27,7 +29,10 @@ function AppRouter() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route element={<Protected><Layout /></Protected>}>
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/home" element={<Explore />} />
+        <Route path="/coin/:id" element={<CoinDetail />} />
+        <Route path="/chart" element={<ChartAnalyst />} />
+        <Route path="/dashboard" element={<Navigate to="/portfolio" replace />} />
         <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/health" element={<Health />} />
         <Route path="/analyst" element={<Analyst />} />
@@ -35,7 +40,7 @@ function AppRouter() {
         <Route path="/goals" element={<Goals />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   );
 }

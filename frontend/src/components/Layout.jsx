@@ -1,18 +1,19 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Wallet, HeartPulse, Sparkles, ShieldAlert, Target, Settings, LogOut, Bell } from "lucide-react";
+import { Compass, CandlestickChart, Wallet, HeartPulse, Sparkles, ShieldAlert, Target, Settings, LogOut, Bell } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useApi, http } from "@/lib/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PriceStatus } from "@/components/Bits";
 
 export const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/portfolio", label: "My Portfolio", icon: Wallet },
-  { to: "/health", label: "Portfolio Health", icon: HeartPulse },
-  { to: "/analyst", label: "AI Analyst", icon: Sparkles, ai: true },
-  { to: "/risk", label: "Risk Monitor", icon: ShieldAlert },
-  { to: "/goals", label: "Investment Goals", icon: Target },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/home", label: "Crypto Explore", icon: Compass, short: "Explore" },
+  { to: "/portfolio", label: "My Portfolio", icon: Wallet, short: "Portfolio" },
+  { to: "/health", label: "Portfolio Health", icon: HeartPulse, short: "Health" },
+  { to: "/chart", label: "AI Chart Analyst", icon: CandlestickChart, ai: true, short: "Charts" },
+  { to: "/analyst", label: "AI Portfolio Analyst", icon: Sparkles, ai: true, short: "AI Chat" },
+  { to: "/risk", label: "Risk Monitor", icon: ShieldAlert, short: "Risk" },
+  { to: "/goals", label: "Investment Goals", icon: Target, short: "Goals" },
+  { to: "/settings", label: "Settings", icon: Settings, short: "Settings" },
 ];
 
 function Notifications() {
@@ -90,10 +91,10 @@ export default function Layout() {
 
       <main className="px-4 sm:px-8 py-6 pb-28 lg:pb-10 max-w-[1600px]"><Outlet /></main>
 
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[#060A13]/95 backdrop-blur-xl border-t border-white/5 flex justify-around px-1 py-2">
-        {NAV.map(({ to, label, icon: I, ai }) => (
-          <NavLink key={to} to={to} data-testid={`mobile-nav-${to.slice(1)}`} className={({ isActive }) => `flex flex-col items-center gap-1 px-1.5 py-1 rounded-lg text-[9px] ${isActive ? (ai ? "text-violet-300" : "text-emerald-300") : "text-slate-500"}`}>
-            <I className="h-5 w-5" />{label.split(" ").pop()}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[#060A13]/95 backdrop-blur-xl border-t border-white/5 flex overflow-x-auto gap-1 px-2 py-2">
+        {NAV.map(({ to, short, icon: I, ai }) => (
+          <NavLink key={to} to={to} data-testid={`mobile-nav-${to.slice(1)}`} className={({ isActive }) => `shrink-0 min-w-[62px] flex flex-col items-center gap-1 px-1.5 py-1 rounded-lg text-[10px] ${isActive ? (ai ? "text-violet-300" : "text-emerald-300") : "text-slate-500"}`}>
+            <I className="h-5 w-5" />{short}
           </NavLink>
         ))}
       </nav>

@@ -6,7 +6,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useApi, http, errMsg, fmtINR, fmtPct, fmtSigned, fmtQty, tone } from "@/lib/api";
 import { PageTitle, Skeleton, EmptyPortfolio, ErrorBox, CoinIcon } from "@/components/Bits";
 import HoldingDialog from "@/components/HoldingDialog";
-import { useRefreshAll } from "@/pages/Dashboard";
+import { useRefreshAll, Overview } from "@/pages/Dashboard";
 
 function Row({ h, onEdit, onDelete }) {
   return (
@@ -65,6 +65,8 @@ export default function Portfolio() {
         <EmptyPortfolio onAdd={() => setDlg({ open: true, holding: null })} onDemo={demo} />
       ) : (
         <>
+          <Overview s={s} />
+          <h2 className="font-display text-lg mb-4">Holdings</h2>
           <div className="hidden md:block k-card overflow-x-auto fade-up">
             <table className="w-full min-w-[900px]" data-testid="holdings-table">
               <thead><tr className="text-[11px] uppercase tracking-wider text-slate-500">

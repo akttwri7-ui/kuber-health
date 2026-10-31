@@ -9,7 +9,7 @@ import { ShieldCheck, Sparkles, Activity, Loader2 } from "lucide-react";
 
 const googleLogin = () => {
   // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-  const redirectUrl = window.location.origin + "/dashboard";
+  const redirectUrl = window.location.origin + "/home";
   window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
 };
 
@@ -26,7 +26,7 @@ export default function Login() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to="/dashboard" replace />;
+  if (user) return <Navigate to="/home" replace />;
 
   const submit = async (e) => {
     e.preventDefault();
