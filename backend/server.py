@@ -125,7 +125,7 @@ async def register(body: RegisterIn, response: Response):
 @api.post("/auth/login")
 async def login(body: LoginIn, request: Request, response: Response):
     email = body.email.lower()
-    ident = f"{request.client.host if request.client else 'x'}:{email}"
+    ident = f"login:{email}"
     att = await db.login_attempts.find_one({"identifier": ident})
     if att and att.get("count", 0) >= 5:
         locked = att.get("last")
@@ -215,7 +215,7 @@ class HoldingIn(BaseModel):
             d = date.fromisoformat(v[:10])
         except ValueError:
             raise ValueError("Purchase date must be YYYY-MM-DD")
-        if d > date.today():
+        if d > date.today() + timedelta(days=1):
             raise ValueError("Purchase date cannot be in the future")
         return d.isoformat()
 
@@ -387,8 +387,8 @@ async def risk(user=Depends(get_current_user)):
     for a in alerts:
         await db.notifications.update_one(
             {"user_id": uid, "key": a["key"], "day": day},
-            {"$setOnInsert": {"notif_id": new_id("ntf"), "user_id": uid, "key": a["key"], "day": day, "title": a["title"],
-                              "message": a["message"], "severity": a["severity"], "read": False, "created_at": now().isoformat()}},
+            {"$set": {"title": a["title"], "message": a["message"], "severity": a["severity"]},
+             "$setOnInsert": {"notif_id": new_id("ntf"), "user_id": uid, "key": a["key"], "day": day, "read": False, "created_at": now().isoformat()}},
             upsert=True)
     return {"alerts": alerts, "drawdown_30d": vol.get("drawdown_30d"), "peak_30d": vol.get("peak_30d"),
             "change_24h_pct": summary["change_24h_pct"], "change_24h": summary["change_24h"],
@@ -545,9 +545,8 @@ app.include_router(api)
 origins = os.environ.get("CORS_ORIGINS", "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origin_regex=".*" if origins == "*" else None,
-    allow_origins=[] if origins == "*" else origins.split(","),
+    allow_credentials=origins != "*",
+    allow_origins=origins.split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )

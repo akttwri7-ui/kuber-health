@@ -54,7 +54,7 @@ export default function Goals() {
       setOpen(false); mutate();
     } catch (e) { setErr(errMsg(e)); }
   };
-  const del = async (g) => { try { await http.delete(`/goals/${g.goal_id}`); toast.success("Goal deleted"); mutate(); } catch (e) { toast.error(errMsg(e)); } };
+  const del = async (g) => { if (!window.confirm(`Delete goal "${g.name}"?`)) return; try { await http.delete(`/goals/${g.goal_id}`); toast.success("Goal deleted"); mutate(); } catch (e) { toast.error(errMsg(e)); } };
 
   return (
     <div>

@@ -283,14 +283,15 @@ def compute_health(summary, vol, targets):
 
 def compute_alerts(summary, vol, settings):
     alerts = []
-    thresholds = sorted(settings.get("drawdown_thresholds", [5, 10, 15]))
+    thresholds = sorted(float(f"{t:g}") for t in settings.get("drawdown_thresholds", [5, 10, 15]))
+    f = lambda x: f"{x:g}"
     limit = settings.get("concentration_limit", 40)
     dd = vol.get("drawdown_30d")
     if dd is not None:
         hit = [t for t in thresholds if dd >= t]
         if hit:
-            alerts.append({"key": f"dd-{hit[-1]}", "type": "drawdown", "severity": "high" if hit[-1] >= 10 else "medium",
-                           "title": f"Drawdown passed {hit[-1]}%",
+            alerts.append({"key": f"dd-{f(hit[-1])}", "type": "drawdown", "severity": "high" if hit[-1] >= 10 else "medium",
+                           "title": f"Drawdown passed {f(hit[-1])}%",
                            "message": f"Your current holdings are {dd:.1f}% below their 30-day peak value."})
     ch = summary["change_24h_pct"]
     if thresholds and abs(ch) >= thresholds[0]:
@@ -302,7 +303,7 @@ def compute_alerts(summary, vol, settings):
             alerts.append({"key": f"conc-{r['coin_id']}", "type": "concentration",
                            "severity": "high" if r["allocation"] > 60 else "medium",
                            "title": f"{r['symbol'].upper()} is {r['allocation']:.0f}% of your portfolio",
-                           "message": f"That's above your {limit}% concentration limit. Heavy exposure means one coin drives your results."})
+                           "message": f"That's above your {f(limit)}% concentration limit. Heavy exposure means one coin drives your results."})
     return alerts
 
 

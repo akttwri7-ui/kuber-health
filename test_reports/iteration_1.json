@@ -1,0 +1,51 @@
+{
+  "summary": "First full E2E run of Kuber Crypto (backend + frontend). Backend: 26 pytest cases, 25 pass. Covered auth (register/login/logout/me/refresh, httpOnly cookies, bcrypt $2b$), Google session via injected session_token (cookie and Bearer, API and UI), user isolation (404 on cross-user holding/goal edit/delete), holdings CRUD with average-cost merge (0.1@50L + 0.3@70L -> 0.4@65L, earliest date kept), validation (qty/price <=0, future and bad dates -> 422), summary math (invested/value/pnl/allocation sum 100), demo load (and refused on a non-empty portfolio), coin search, history for 7/30/90/365 days, health (score = sum of categories, risk label, 3 observations and 3 suggestions), settings (targets not summing to 100 rejected; matching targets raise the allocation score from 0.3 to 24.7), risk concentration alert, notifications, goals CRUD and math, and SSE AI chat grounded in real holdings with history persisting. One backend failure: brute-force lockout never triggers through the ingress. Frontend: all tested flows pass on desktop (1920) and mobile (390): register, empty state, Load sample portfolio, dashboard stats, performance 7D/30D/90D/1Y, add/merge/edit/delete holding, readable validation errors, health page, settings, risk alerts, notification bell (count clears on close), goals CRUD, AI suggested question streaming (only 2 AI calls total), mobile bottom nav with no horizontal overflow, logout redirect. Live prices worked: CoinGecko returned 429s but the Binance fallback kept status 'live'.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/login", "issue": "Brute-force lockout does not work in this deployment. The identifier is f'{request.client.host}:{email}', and request.client.host is the ingress pod IP, which rotates between 10.79.138.2 and 10.79.138.5. Failed attempts are split across several identifiers, so 6+ bad passwords still return 401 and never 429 (seen in the db.login_attempts collection). Fix: key the lockout on email only, or on the first X-Forwarded-For IP plus email.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "CORS middleware", "issue": "CORS_ORIGINS='*' turns into allow_origin_regex='.*' with allow_credentials=True. Any origin (tested with https://evil.com) is echoed back with Access-Control-Allow-Credentials: true. Use an explicit list of origins."},
+      {"endpoint": "GET /api/risk (notifications)", "issue": "Notification keys/titles depend on float formatting. After settings are saved, thresholds become floats (10.0), so key 'dd-10.0' differs from 'dd-10'. This creates a duplicate notification ('Drawdown passed 10%' and 'Drawdown passed 10.0%'), and alert text reads '40.0% concentration limit'. Format numbers with :g or cast to int before building key and title."},
+      {"endpoint": "GET /api/risk (notifications)", "issue": "$setOnInsert keeps the first message of the day, so the bell shows stale text ('BTC is 59%') after the allocation changed to 74%."},
+      {"endpoint": "market._get", "issue": "No backoff after a CoinGecko 429: every summary request calls CoinGecko again before falling back (52+ 429 warnings in the log). The global asyncio lock also serializes every outbound call, with a 12s timeout each. Cache the failure for about 60s."},
+      {"endpoint": "POST /api/holdings", "issue": "The future-date check uses server date.today() (UTC) and the frontend uses toISOString (UTC). A user in IST cannot enter today's date between 00:00 and 05:30 IST."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Portfolio MobileCard", "issue": "Edit/delete icon buttons in the mobile holding cards have no data-testid", "selector": "[data-testid^='holding-card-'] button", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard mobile (390px)", "issues": ["Total value card is half width (big only applies sm:col-span-2), so the ₹ value almost touches the card edge. Make it col-span-2 on mobile."]},
+      {"screen": "Global", "issues": ["Sonner toast (top-right) covers the notification bell for several seconds after each action", "Goal and holding date fields use the native browser date input instead of the shadcn Calendar/Popover", "Delete goal has no confirmation dialog (holdings do)"]},
+      {"screen": "AI Analyst mobile", "issues": ["Title, subtitle and Clear button use about 30% of the height, leaving a cramped message area"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_kuber_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix the login brute-force lockout identifier (email-only, or X-Forwarded-For first IP plus email) so 5 failures lock the account behind the ingress",
+    "Replace the wildcard CORS regex with explicit origins when allow_credentials=True",
+    "Normalize threshold/limit number formatting in alert keys and titles (no '10.0%') to stop duplicate notifications; refresh the notification message when the same key fires again",
+    "Add short negative caching/backoff for CoinGecko 429s",
+    "Make the Total value stat span 2 columns on mobile",
+    "Add data-testids to the mobile holding card edit/delete buttons"
+  ],
+  "critical_code_review_comments": [
+    "server.py login(): request.client.host is the proxy IP, not the client's IP",
+    "server.py CORS: allow_origin_regex '.*' plus credentials is effectively an open CORS policy",
+    "analytics.compute_alerts: f'dd-{hit[-1]}' depends on int vs float type, so keys are unstable",
+    "market._get: a single global lock serializes all external HTTP calls; Binance fallback fetches klines one coin at a time under the lock, so large portfolios can be slow when CoinGecko is rate-limited",
+    "Health 'Why this score' line sums rounded categories (32.3) next to a rounded total (32). Cosmetic, can differ by 1",
+    "Logout does not invalidate JWTs on the server (acceptable given the 15-minute access token)"
+  ],
+  "updated_files": ["/app/backend/tests/test_kuber_api.py"],
+  "success_rate": {"backend": "96% (25/26)", "frontend": "100% of tested flows"},
+  "test_credentials": "admin@kubercrypto.com / Kuber@123 (from /app/memory/test_credentials.md, works, bcrypt $2b$ hash verified)",
+  "seed_data_creation": "Created test users test_*@example.com (pytest), ui_832849@example.com / Passw0rd! (UI, has the sample portfolio plus 0.1 BTC merge and custom targets), and a Google test user g.test.*@example.com with session token test_session_1793465164192 inserted in user_sessions.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend suite with: pytest /app/backend/tests/test_kuber_api.py -p no:xdist -o addopts='' (tests depend on order; pytest.ini enables xdist, which breaks the module-scoped fixtures). Only test_bruteforce_lockout fails, because of ingress IP rotation. The chat test makes 1 real LLM call. CoinGecko returns 429 often; the Binance fallback handles it.",
+  "rca of the issue": "Lockout: the backend logs show alternating client IPs 10.79.138.2/10.79.138.5 for the same test client. db.login_attempts holds separate docs per IP for the same email (counts 3+3, 4+2), so count>=5 is never reached on a single identifier. Repro: send 6 bad logins for one email through the public URL; all return 401. Mitigation: identifier = email, or use the X-Forwarded-For header."
+}

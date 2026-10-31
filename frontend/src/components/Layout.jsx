@@ -88,7 +88,7 @@ export default function Layout() {
         </div>
       </header>
 
-      <main className="px-4 sm:px-8 py-6 pb-28 lg:pb-10 max-w-[1400px]"><Outlet /></main>
+      <main className="px-4 sm:px-8 py-6 pb-28 lg:pb-10 max-w-[1600px]"><Outlet /></main>
 
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[#060A13]/95 backdrop-blur-xl border-t border-white/5 flex justify-around px-1 py-2">
         {NAV.map(({ to, label, icon: I, ai }) => (

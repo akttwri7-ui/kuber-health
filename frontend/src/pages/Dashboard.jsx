@@ -13,7 +13,7 @@ export const useRefreshAll = () => {
 
 function Stat({ label, value, sub, subTone, testid, big, delay }) {
   return (
-    <div className={`k-card p-5 fade-up ${big ? "sm:col-span-2" : ""}`} style={{ animationDelay: delay }} data-testid={testid}>
+    <div className={`k-card p-5 fade-up ${big ? "col-span-2" : ""}`} style={{ animationDelay: delay }} data-testid={testid}>
       <p className="text-xs text-slate-500 uppercase tracking-wider">{label}</p>
       <p className={`font-mono-num mt-2 ${big ? "text-3xl sm:text-4xl" : "text-xl sm:text-2xl"} ${subTone && !sub ? subTone : ""}`}>{value}</p>
       {sub && <p className={`text-sm mt-1 font-mono-num ${subTone}`}>{sub}</p>}

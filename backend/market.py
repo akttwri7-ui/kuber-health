@@ -6,7 +6,8 @@ import httpx
 logger = logging.getLogger(__name__)
 CG = "https://api.coingecko.com/api/v3"
 _cache = {}
-_lock = asyncio.Lock()
+_locks = {}
+_fail = {}
 
 # Labeled demo prices (INR) used only when the live API is unreachable and nothing is cached
 DEMO_PRICES = {
@@ -32,7 +33,10 @@ async def _get(url, params, ttl, key):
     hit = _cache.get(key)
     if hit and now - hit[0] < ttl:
         return hit[1], "live"
-    async with _lock:
+    host = url.split("/")[2]
+    if time.time() - _fail.get(host, 0) < 60:
+        return (hit[1], "stale") if hit else (None, "unavailable")
+    async with _locks.setdefault(host, asyncio.Lock()):
         hit = _cache.get(key)
         if hit and time.time() - hit[0] < ttl:
             return hit[1], "live"
@@ -43,9 +47,14 @@ async def _get(url, params, ttl, key):
                 data = r.json()
                 _cache[key] = (time.time(), data)
                 return data, "live"
-            logger.warning("CoinGecko %s -> %s", url, r.status_code)
+            logger.warning("Price API %s -> %s", url, r.status_code)
+            if r.status_code == 429 or r.status_code >= 500:
+                _fail[host] = time.time()
+            else:
+                _cache[key] = (time.time(), None)
         except Exception as e:
-            logger.warning("CoinGecko error %s: %s", url, e)
+            logger.warning("Price API error %s: %s", url, e)
+            _fail[host] = time.time()
     if hit:
         return hit[1], "stale"
     return None, "unavailable"

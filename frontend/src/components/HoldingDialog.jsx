@@ -7,7 +7,7 @@ import { http, errMsg, fmtINR } from "@/lib/api";
 import { toast } from "sonner";
 import { Search, Loader2 } from "lucide-react";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 
 function CoinPicker({ value, onPick }) {
   const [q, setQ] = useState("");

@@ -31,8 +31,8 @@ function MobileCard({ h, onEdit, onDelete }) {
   return (
     <div className="k-card p-4" data-testid={`holding-card-${h.coin_id}`}>
       <div className="flex items-center gap-3"><CoinIcon h={h} /><div className="flex-1"><p className="font-semibold">{h.name}</p><p className="text-xs text-slate-500">{fmtQty(h.quantity)} {h.symbol.toUpperCase()} · {h.allocation.toFixed(1)}%</p></div>
-        <Button size="icon" variant="ghost" onClick={() => onEdit(h)}><Pencil className="h-4 w-4" /></Button>
-        <Button size="icon" variant="ghost" onClick={() => onDelete(h)}><Trash2 className="h-4 w-4" /></Button></div>
+        <Button size="icon" variant="ghost" onClick={() => onEdit(h)} data-testid={`mobile-edit-holding-${h.coin_id}`}><Pencil className="h-4 w-4" /></Button>
+        <Button size="icon" variant="ghost" onClick={() => onDelete(h)} data-testid={`mobile-delete-holding-${h.coin_id}`}><Trash2 className="h-4 w-4" /></Button></div>
       <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
         <div><p className="text-slate-500">Value</p><p className="font-mono-num text-sm">{fmtINR(h.value)}</p></div>
         <div><p className="text-slate-500">Invested</p><p className="font-mono-num text-sm">{fmtINR(h.invested)}</p></div>

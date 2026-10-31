@@ -96,7 +96,7 @@ export default function Analyst() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-180px)] lg:h-[calc(100vh-130px)]">
-      <PageTitle ai title="AI Portfolio Analyst" sub="Kuber AI reads your actual holdings, prices, health score and alerts. It never invents numbers and never executes trades.">
+      <PageTitle ai title="AI Portfolio Analyst" sub={window.innerWidth < 640 ? null : "Kuber AI reads your actual holdings, prices, health score and alerts. It never invents numbers and never executes trades."}>
         {msgs.length > 0 && <Button variant="ghost" size="sm" onClick={clear} data-testid="clear-chat-btn" className="text-slate-400"><Trash2 className="h-4 w-4 mr-1" />Clear</Button>}
       </PageTitle>
       <div className="k-card-ai flex-1 flex flex-col min-h-0 overflow-hidden">
