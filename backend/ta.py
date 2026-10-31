@@ -79,7 +79,7 @@ def levels(candles, window=5, count=3):
         vals = sorted(vals)
         groups = []
         for v in vals:
-            if groups and abs(v - groups[-1][-1]) / v < 0.012:
+            if groups and abs(v - sum(groups[-1]) / len(groups[-1])) / v < 0.006 and (v - groups[-1][0]) / v < 0.012:
                 groups[-1].append(v)
             else:
                 groups.append([v])

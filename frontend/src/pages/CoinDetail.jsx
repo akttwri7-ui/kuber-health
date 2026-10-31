@@ -158,7 +158,7 @@ export default function CoinDetail() {
           <NewsList items={news} loading={nl || !news} testid="coin-news" title={`${d.name} news`} />
         </div>
       </div>
-      <HoldingDialog open={add} onOpenChange={setAdd} preset={{ coin_id: d.id, symbol: d.symbol, name: d.name, image: d.image }} onSaved={() => { refresh(); }} />
+      <HoldingDialog open={add} onOpenChange={setAdd} preset={{ coin_id: d.id, symbol: d.symbol, name: d.name, image: d.image, price: d.price }} onSaved={() => { refresh(); }} />
     </div>
   );
 }

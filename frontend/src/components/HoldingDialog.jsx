@@ -64,7 +64,7 @@ export default function HoldingDialog({ open, onOpenChange, holding, onSaved, pr
       setF({ quantity: String(holding.quantity), avg_price: String(holding.avg_price), purchase_date: holding.purchase_date, notes: holding.notes || "" });
     } else {
       setCoin(preset || null);
-      setF({ quantity: "", avg_price: "", purchase_date: today(), notes: "" });
+      setF({ quantity: "", avg_price: preset?.price ? String(+preset.price.toFixed(2)) : "", purchase_date: today(), notes: "" });
     }
   }, [open, holding]); // eslint-disable-line
 

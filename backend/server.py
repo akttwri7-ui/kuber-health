@@ -24,6 +24,7 @@ from market import search_coins
 from analytics import build_summary, build_history, volatility_and_drawdown, compute_health, compute_alerts, goal_progress
 from market import _usd_inr as get_fx
 import explore
+import market
 import ta
 from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
 
@@ -725,6 +726,11 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
+    explore.db = db
+    market.db = db
+    await db.api_cache.create_index("key", unique=True)
+    import asyncio
+    asyncio.create_task(explore.coin_index())
     await db.users.create_index("email", unique=True)
     await db.users.create_index("user_id", unique=True)
     await db.holdings.create_index([("user_id", 1), ("coin_id", 1)])

@@ -16,7 +16,7 @@ export function AuthProvider({ children }) {
         const { data } = await http.get("/auth/me");
         setUser(data);
       } catch {
-        setUser(false);
+        setUser((u) => u || false);
       }
     }
   }, []);

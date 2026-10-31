@@ -28,34 +28,55 @@ POPULAR = [
 ]
 
 
+db = None
+
+
+async def _persisted(key):
+    if db is None:
+        return None
+    doc = await db.api_cache.find_one({"key": key}, {"_id": 0})
+    return (doc["t"], doc["data"]) if doc else None
+
+
 async def _get(url, params, ttl, key):
-    now = time.time()
+    """Cached GET. Successful long-lived responses are also persisted so stale data survives restarts and rate limits."""
     hit = _cache.get(key)
-    if hit and now - hit[0] < ttl:
+    if hit and time.time() - hit[0] < ttl:
         return hit[1], "live"
+    if not hit and ttl >= 300:
+        hit = await _persisted(key)
+        if hit:
+            _cache[key] = hit
+            if time.time() - hit[0] < ttl:
+                return hit[1], "live"
     host = url.split("/")[2]
     if time.time() - _fail.get(host, 0) < 60:
         return (hit[1], "stale") if hit else (None, "unavailable")
     async with _locks.setdefault(host, asyncio.Lock()):
-        hit = _cache.get(key)
-        if hit and time.time() - hit[0] < ttl:
-            return hit[1], "live"
+        cur = _cache.get(key)
+        if cur and time.time() - cur[0] < ttl:
+            return cur[1], "live"
         try:
             async with httpx.AsyncClient(timeout=12) as c:
                 r = await c.get(url, params=params, headers={"accept": "application/json"})
             if r.status_code == 200:
                 data = r.json()
                 _cache[key] = (time.time(), data)
+                if ttl >= 300 and db is not None:
+                    try:
+                        await db.api_cache.update_one({"key": key}, {"$set": {"t": time.time(), "data": data}}, upsert=True)
+                    except Exception as e:
+                        logger.warning("cache persist failed %s: %s", key, e)
                 return data, "live"
             logger.warning("Price API %s -> %s", url, r.status_code)
-            if r.status_code == 429 or r.status_code >= 500:
-                _fail[host] = time.time()
-            else:
+            if r.status_code in (402, 403, 429) or r.status_code >= 500:
+                _fail[host] = time.time() + (600 if r.status_code == 402 else 0)
+            elif not hit:
                 _cache[key] = (time.time(), None)
         except Exception as e:
             logger.warning("Price API error %s: %s", url, e)
             _fail[host] = time.time()
-    if hit:
+    if hit and hit[1] is not None:
         return hit[1], "stale"
     return None, "unavailable"
 

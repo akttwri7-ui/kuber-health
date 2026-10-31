@@ -14,6 +14,8 @@ const IND = [["volume", "Volume"], ["sma", "SMA 20/50"], ["ema", "EMA 20"], ["bb
 const QUICK = ["What is happening with this coin?", "Explain the current trend.", "What does RSI indicate?",
   "Where are the important support and resistance levels?", "Is trading volume increasing?", "Explain the latest candlestick pattern."];
 
+const INR = { type: "custom", minMove: 0.0001, formatter: (p) => `₹${p.toLocaleString("en-IN", { maximumFractionDigits: p < 100 ? 4 : 2 })}` };
+const OSC = { type: "custom", formatter: (v) => v.toFixed(2) };
 const line = (candles, arr) => candles.map((c, i) => (arr[i] == null ? null : { time: c.time, value: arr[i] })).filter(Boolean);
 
 function Chart({ data, ind }) {
@@ -27,31 +29,31 @@ function Chart({ data, ind }) {
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: "rgba(148,163,184,0.15)" },
       timeScale: { borderColor: "rgba(148,163,184,0.15)", timeVisible: true, secondsVisible: false },
-      localization: { priceFormatter: (p) => `₹${p.toLocaleString("en-IN", { maximumFractionDigits: p < 100 ? 4 : 2 })}` },
     });
     const { candles, series: s } = data;
-    chart.addSeries(CandlestickSeries, { upColor: "#10B981", downColor: "#F43F5E", wickUpColor: "#10B981", wickDownColor: "#F43F5E", borderVisible: false }).setData(candles);
+    chart.addSeries(CandlestickSeries, { upColor: "#10B981", downColor: "#F43F5E", wickUpColor: "#10B981", wickDownColor: "#F43F5E", borderVisible: false, priceFormat: INR }).setData(candles);
     if (ind.volume) {
       const v = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol", lastValueVisible: false, priceLineVisible: false });
       v.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
       v.setData(candles.map((c) => ({ time: c.time, value: c.volume, color: c.close >= c.open ? "rgba(16,185,129,0.35)" : "rgba(244,63,94,0.35)" })));
     }
     const addLine = (arr, color, pane = 0, w = 1.5, extra = {}) => chart.addSeries(LineSeries, { color, lineWidth: w, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, ...extra }, pane).setData(line(candles, arr));
-    if (ind.sma) { addLine(s.sma20, "#F59E0B"); addLine(s.sma50, "#3B82F6"); }
-    if (ind.ema) addLine(s.ema20, "#EC4899");
-    if (ind.bb) { addLine(s.bb_upper, "rgba(167,139,250,0.8)", 0, 1); addLine(s.bb_mid, "rgba(167,139,250,0.4)", 0, 1); addLine(s.bb_lower, "rgba(167,139,250,0.8)", 0, 1); }
+    const P = { priceFormat: INR };
+    if (ind.sma) { addLine(s.sma20, "#F59E0B", 0, 1.5, P); addLine(s.sma50, "#3B82F6", 0, 1.5, P); }
+    if (ind.ema) addLine(s.ema20, "#EC4899", 0, 1.5, P);
+    if (ind.bb) { addLine(s.bb_upper, "rgba(167,139,250,0.8)", 0, 1, P); addLine(s.bb_mid, "rgba(167,139,250,0.4)", 0, 1, P); addLine(s.bb_lower, "rgba(167,139,250,0.8)", 0, 1, P); }
     let pane = 1;
     if (ind.rsi) {
-      const r = chart.addSeries(LineSeries, { color: "#A78BFA", lineWidth: 1.5, priceLineVisible: false }, pane);
+      const r = chart.addSeries(LineSeries, { color: "#A78BFA", lineWidth: 1.5, priceLineVisible: false, priceFormat: OSC }, pane);
       r.setData(line(candles, s.rsi));
       r.createPriceLine({ price: 70, color: "rgba(244,63,94,0.5)", lineStyle: 2, axisLabelVisible: true });
       r.createPriceLine({ price: 30, color: "rgba(16,185,129,0.5)", lineStyle: 2, axisLabelVisible: true });
       pane++;
     }
     if (ind.macd) {
-      chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane).setData(candles.map((c, i) => (s.macd_hist[i] == null ? null : { time: c.time, value: s.macd_hist[i], color: s.macd_hist[i] >= 0 ? "rgba(16,185,129,0.55)" : "rgba(244,63,94,0.55)" })).filter(Boolean));
-      addLine(s.macd, "#38BDF8", pane);
-      addLine(s.macd_signal, "#F59E0B", pane);
+      chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceFormat: OSC }, pane).setData(candles.map((c, i) => (s.macd_hist[i] == null ? null : { time: c.time, value: s.macd_hist[i], color: s.macd_hist[i] >= 0 ? "rgba(16,185,129,0.55)" : "rgba(244,63,94,0.55)" })).filter(Boolean));
+      addLine(s.macd, "#38BDF8", pane, 1.5, { priceFormat: OSC });
+      addLine(s.macd_signal, "#F59E0B", pane, 1.5, { priceFormat: OSC });
     }
     const panes = chart.panes();
     panes.forEach((p, i) => i > 0 && p.setHeight(110));
@@ -68,25 +70,27 @@ function AIPanel({ coin, interval, snap }) {
   const [stamp, setStamp] = useState(null);
   const [q, setQ] = useState("");
   const end = useRef(null);
-  useEffect(() => { setMsgs([]); setStamp(null); }, [coin.symbol, interval]);
+  const runId = useRef(0);
+  useEffect(() => { runId.current++; setMsgs([]); setStamp(null); setBusy(false); }, [coin.symbol, interval]);
   useEffect(() => { end.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [msgs]);
 
   const run = async (question) => {
     if (busy) return;
     setBusy(true);
+    const id = ++runId.current;
     const ctx = msgs.filter((m) => m.content).map(({ role, content }) => ({ role, content }));
     const next = question ? [...msgs, { role: "user", content: question }] : [];
     setMsgs([...next, { role: "assistant", content: "", kind: question ? "answer" : "analysis" }]);
-    const append = (d) => setMsgs((m) => { const c = [...m]; c[c.length - 1] = { ...c[c.length - 1], content: c[c.length - 1].content + d }; return c; });
+    const append = (d) => id === runId.current && setMsgs((m) => { if (!m.length) return m; const c = [...m]; c[c.length - 1] = { ...c[c.length - 1], content: c[c.length - 1].content + d }; return c; });
     try {
       await streamSSE("/chart/analyze", { symbol: coin.symbol, name: coin.name, interval, question: question || null, context: question ? ctx : [] }, append);
-      if (!question) setStamp(new Date());
+      if (!question && id === runId.current) setStamp(new Date());
     } catch (e) { append(e.message || "Analysis unavailable right now."); }
-    setBusy(false);
+    if (id === runId.current) setBusy(false);
   };
 
   return (
-    <div className="k-card-ai p-4 sm:p-5 flex flex-col lg:max-h-[calc(100vh-150px)] lg:sticky lg:top-24" data-testid="ai-chart-panel">
+    <div className="k-card-ai min-w-0 p-4 sm:p-5 flex flex-col lg:max-h-[calc(100vh-150px)] lg:sticky lg:top-24" data-testid="ai-chart-panel">
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-2 font-semibold text-violet-200"><Sparkles className="h-4 w-4" />AI Chart Analysis</p>
         <Button onClick={() => run(null)} disabled={busy || !snap} size="sm" className="rounded-full bg-violet-500 hover:bg-violet-400" data-testid="analyze-chart-btn">
@@ -142,10 +146,10 @@ export default function ChartAnalyst() {
         </div>
         <Link to={`/coin/${coin.id}?symbol=${coin.symbol}`} className="text-sm text-emerald-400 hover:underline" data-testid="chart-coin-details-link">Coin details →</Link>
       </div>
-      <div className="grid lg:grid-cols-[1fr_400px] gap-5 items-start">
-        <div className="k-card p-3 sm:p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] gap-5 items-start">
+        <div className="k-card p-3 sm:p-4 min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <div className="flex bg-white/5 rounded-full p-1" data-testid="interval-switch">{INTERVALS.map((i) => (
+            <div className="flex flex-wrap bg-white/5 rounded-full p-1" data-testid="interval-switch">{INTERVALS.map((i) => (
               <button key={i} onClick={() => setIntervalV(i)} data-testid={`interval-${i}`} className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${interval === i ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"}`}>{i.toUpperCase()}</button>))}</div>
             <div className="flex flex-wrap gap-1.5" data-testid="indicator-toggles">{IND.map(([k, l]) => (
               <button key={k} onClick={() => setInd({ ...ind, [k]: !ind[k] })} data-testid={`toggle-${k}`} className={`px-2.5 py-1 rounded-full text-[11px] border transition-colors ${ind[k] ? "border-violet-400/60 bg-violet-500/15 text-violet-200" : "border-white/10 text-slate-500 hover:text-slate-300"}`}>{l}</button>))}</div>

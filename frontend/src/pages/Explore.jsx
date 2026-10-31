@@ -83,7 +83,7 @@ export default function Explore() {
                   </tr>))}</tbody>
               </table>
             </div>
-            <NewsList items={news} loading={nl} testid="general-news" title="Crypto news" />
+            <NewsList items={news?.slice(0, 9)} loading={nl} testid="general-news" title="Crypto news" />
           </div>
         </>
       )}

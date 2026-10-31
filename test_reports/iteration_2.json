@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 2: tested Crypto Explore, Coin detail, AI Chart Analyst and regressions. Backend: 36/36 new tests pass (auth guards, overview, search, news, detail, 6 history periods, coin news, holding in detail, candles for all 6 intervals, unsupported USDT 404, validation), plus 25/25 regression tests from iteration 1 (the chat test was skipped to save AI calls). Frontend: login lands on /home; overview cards, trending, gainers, losers, top-20 table and news all render; search works for eth/BTC/solana with logos and INR prices and opens the coin page; coin detail shows price, performance, stats, all 6 history periods, about/links and Google News items; AI research streamed fine (1 AI call); Add to portfolio from coin detail saves and the holding banner appears; the chart renders, all intervals load, indicator toggles add/remove RSI/MACD panes with no page errors; Analyze Chart streamed and showed a timestamp; a quick question got a follow-up answer (2 AI calls); changing the interval cleared the analysis without a new AI call; USDT shows a friendly error and Analyze is disabled; /dashboard redirects to /portfolio, which shows the overview plus holdings with working edit/delete; Health/Analyst/Risk/Goals/Settings load; the mobile bottom nav scrolls with all 8 items. Main problems: (1) BNB and XRP (top-5 coins) open no coin page from search while CoinGecko is rate-limited, (2) the Chart Analyst page scrolls sideways on mobile, (3) CoinPaprika's free-tier block (402) is cached as 'no data'.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/explore/search + GET /api/coins/{id}/detail", "issue": "Coin id mismatch between sources. Search uses CoinGecko ids (binancecoin, ripple, pepe), but the CoinPaprika fallback builds '{symbol}-{cg_id}', e.g. bnb-binancecoin or xrp-ripple, which return 404 on CoinPaprika (the real ids are bnb-binance-coin and xrp-xrp). So whenever CoinGecko is rate-limited, searching 'bnb' or 'xrp' shows a result with no price or logo, and selecting it gives 404 'Market data unavailable'. Also, when the overview comes from CoinPaprika, the top/trending ids are CoinPaprika ids (binance-coin, xrp). Adding a holding from those pages stores coin_id='binance-coin' instead of CoinGecko's 'binancecoin', so portfolio pricing and the 'You hold' banner will not match once CoinGecko is back. Fix: build a symbol/name-to-CoinPaprika-id map from the cached /v1/tickers list (or /v1/coins), and normalise all ids to CoinGecko ids (match by symbol + name from the CoinGecko search/markets list).", "priority": "HIGH"},
+      {"endpoint": "market._get (used by all CoinPaprika calls)", "issue": "CoinPaprika returned HTTP 402 'request limits were reached… block_duration 1h' for every endpoint after about 50 per-coin requests during testing. _get only marks the host as failed on 429/5xx. For any other status (402 included) it overwrites the cache with None (line 54), which throws away the good stale data for the TTL. Fix: treat 402/403 like 429 (set _fail[host] with a longer backoff, ideally the block_duration) and never overwrite a valid cache entry with None. Also reduce per-coin CoinPaprika calls, for example by taking the ticker from the cached /v1/tickers list instead of /tickers/{id}.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/coins/{id}/detail (CoinPaprika fallback)", "issue": "circulating_supply shows 'Not available' for SOL and LINK; hashing_algorithm shows the literal string 'None' (LINK); social link names are shown raw ('Source_Code'); the description ends with 'Source: CoinPaprika.com'."},
+      {"endpoint": "ta.levels", "issue": "The clustering compares each value only to the previous one (groups[-1][-1]), so clusters chain and drift. BTC 1h gave a resistance with '49 touches' that spans a wide price range, which makes the AI's support/resistance claims misleading. Compare against the group mean instead and cap the group width."},
+      {"endpoint": "GET /api/explore/overview", "issue": "The 'Trending' fallback (highest volume) is mostly stablecoins (Tether, USDC). Exclude stablecoins from it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ChartAnalyst page (mobile 390px)", "issue": "The page scrolls sideways: document scrollWidth is 563 vs a 390 viewport; the chart card is 521px and the AI panel 547px wide (x=-17). The grid track grows to the min-content of the unwrapped interval switch and the shrink-0 quick-question row. Fix: add grid-cols-1 to the grid at '<div className=\"grid lg:grid-cols-[1fr_400px] ...\">' and min-w-0 to both grid children (k-card and ai-chart-panel).", "selector": "[data-testid='ai-chart-panel'], [data-testid='candlestick-chart']", "priority": "HIGH"},
+      {"component": "ChartAnalyst AIPanel", "issue": "Likely crash, found by reading the code (not reproduced, to save AI calls): changing the coin or interval while a stream is running resets msgs to [] via the useEffect, but the running stream's append() then does c[c.length-1].content on undefined and throws a TypeError inside the setState updater, which can crash the page. Fix: guard in append (if the list is empty, return it unchanged) and abort or ignore the stream with an AbortController or a run-id ref when coin or interval changes.", "selector": "[data-testid='analyze-chart-btn']", "priority": "MEDIUM"},
+      {"component": "Auth bootstrap", "issue": "Race: on /login the initial /auth/me returns 401, then /auth/refresh is called. If the user logs in before that refresh returns (seen in automation), the late 401 logs the newly signed-in user out and sends them back to /login. Make the refresh-failure handler ignore responses that started before a successful login.", "selector": "[data-testid='auth-submit-btn']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Explore search -> coin detail (BNB/XRP/PEPE while CoinGecko is rate-limited)", "issue": "The result shows no price or logo, and selecting it goes to an error page (backend id-mismatch issue above).", "affected_selectors": ["[data-testid='explore-search-option-binancecoin']", "[data-testid='explore-search-option-ripple']"]}
+    ],
+    "design_issues": [
+      {"screen": "Chart Analyst", "issues": ["RSI/MACD pane axis labels have a ₹ prefix (e.g. '₹70', '₹51.4023') because the global priceFormatter is applied to every pane. Set priceFormat per series for the oscillators.", "The '% in view' label uses the first of all 400 candles, not the visible range.", "The USDT error reads \"Couldn't load this data right now…\" with a Retry button, although it is a permanent 'not supported' state."]},
+      {"screen": "Explore (desktop)", "issues": ["The news column is much taller than the top-20 table, leaving a large empty area below the table."]},
+      {"screen": "HoldingDialog", "issues": ["Purchase date uses the browser's native date input instead of the shadcn Calendar/Popover.", "Avg buy price is not prefilled with the current price when opened from coin detail."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_explore_chart.py", "/app/backend/tests/test_kuber_api.py", "/app/test_reports/pytest/pytest_iter2.xml"],
+  "action_items": [
+    "Normalise coin ids to CoinGecko ids across Explore/search/detail/holdings, and map them to correct CoinPaprika ids (bnb-binance-coin, xrp-xrp) through a cached CoinPaprika coin list.",
+    "In market._get, treat 402 (and 403) as a host backoff and never overwrite a cached good value with None; cut per-coin CoinPaprika requests.",
+    "Fix the mobile horizontal overflow on /chart (grid-cols-1 + min-w-0 on the grid children).",
+    "Guard AIPanel append() against reset msgs and abort in-flight streams when coin or interval changes.",
+    "Use a non-₹ price format for the RSI and MACD panes.",
+    "Improve the support/resistance clustering in ta.levels (mean-based, bounded width).",
+    "Minor: exclude stablecoins from the trending fallback; fix 'None' and 'Source_Code' labels and missing circulating supply in the CoinPaprika detail; handle the auth refresh race after login."
+  ],
+  "critical_code_review_comments": [
+    "explore.coin_detail fallback builds the CoinPaprika id as f'{symbol}-{cid}', which is only correct when CoinGecko and CoinPaprika slugs match (btc-bitcoin, eth-ethereum, sol-solana).",
+    "top_markets via CoinPaprika returns CoinPaprika-derived ids (binance-coin, xrp, wrapped-liquid-staked-ether-20), so ids switch with the data source and holdings created from Explore can be inconsistent.",
+    "market._get line 54 caches None on non-429 errors, so a temporary 402 erases stale fallback data.",
+    "CoinSearch has no request cancellation or ordering guard; a slow earlier response can overwrite newer results.",
+    "Research cache is keyed only by coin_id+day (fine), but explore.coin_detail + coin_news run again before every non-cached research call, adding more CoinPaprika load."
+  ],
+  "updated_files": ["/app/backend/tests/test_explore_chart.py"],
+  "success_rate": {"backend": "100% of 36 new tests (61/61 incl. regression); 2 robustness bugs found by probing", "frontend": "~88% (core flows work; mobile chart overflow and BNB/XRP detail failures)"},
+  "test_credentials": "admin@kubercrypto.com / Kuber@123 (from /app/memory/test_credentials.md) - works",
+  "seed_data_creation": "Test users test_<hex>@example.com were registered (one has an ETH holding). A Chainlink holding was added to admin through the UI, edited and then deleted, so admin holdings are back to BTC/ETH/SOL/DOGE. coin_research has a cached Chainlink summary for today.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AI calls used this iteration: 3 (chainlink research, BTC 1h analysis, RSI quick question). Wait about 3s on /login before filling the form to avoid the auth-refresh race. Login testids: auth-email-input / auth-password-input / auth-submit-btn. CoinPaprika blocked this server IP with 402 for 1h at about 17:06 UTC during testing, so expect fallback degradation if you hammer per-coin endpoints. By 17:13 CoinGecko was answering again (Explore source showed CoinGecko). Retest: search 'bnb'/'xrp' -> detail page (with CoinGecko down), /chart at 390px width (scrollWidth must equal 390), and switching interval during a streaming analysis.",
+  "rca of the issue": "BNB/XRP detail 404: the backend log shows 'coinpaprika.com/v1/tickers/bnb-binancecoin -> 404' and 'xrp-ripple -> 404' because the CoinPaprika id is built from the CoinGecko id. Reproduce: GET /api/explore/search?q=bnb gives id 'binancecoin' with price null, then GET /api/coins/binancecoin/detail?symbol=bnb returns 404 while CoinGecko is 429. Mobile overflow: the implicit grid track at <lg is sized to the min-content of the non-wrapping flex rows; fixed with grid-cols-1/min-w-0."
+}

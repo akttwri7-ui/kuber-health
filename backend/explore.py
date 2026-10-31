@@ -6,9 +6,48 @@ from email.utils import parsedate_to_datetime
 import xml.etree.ElementTree as ET
 import httpx
 
-from market import _get, _usd_inr, CG, search_coins
+from market import _get, _usd_inr, CG
 
 PAP = "https://api.coinpaprika.com/v1"
+STABLE_SYMS = ("usdt", "usdc", "dai", "fdusd", "usde", "tusd", "busd", "pyusd", "usds")
+db = None
+_idx = {"t": 0, "by_id": {}, "by_sn": {}, "by_sym": {}}
+
+
+async def coin_index():
+    """CoinGecko id index (persisted in Mongo) so every source maps back to CoinGecko ids."""
+    import time
+    if _idx["by_id"] and time.time() - _idx["t"] < 86400:
+        return _idx
+    doc = await db.coin_index.find_one({"key": "cg"}, {"_id": 0})
+    rows = doc["rows"] if doc and time.time() - doc.get("t", 0) < 7 * 86400 else None
+    if not rows:
+        data, _ = await _get(f"{CG}/coins/list", {}, 86400, "cg-list")
+        if isinstance(data, list) and data:
+            rows = [[c["id"], c["symbol"].lower(), c["name"]] for c in data]
+            await db.coin_index.update_one({"key": "cg"}, {"$set": {"rows": rows, "t": time.time()}}, upsert=True)
+        elif doc:
+            rows = doc["rows"]
+    if rows:
+        _idx.update(t=time.time(), by_id={r[0]: r for r in rows},
+                    by_sn={(r[1], r[2].lower()): r[0] for r in rows}, by_sym={})
+        for r in rows:
+            _idx["by_sym"].setdefault(r[1], []).append(r[0])
+    return _idx
+
+
+def to_cg_id(symbol, name, fallback):
+    sym = (symbol or "").lower()
+    cid = _idx["by_sn"].get((sym, (name or "").lower()))
+    if cid:
+        return cid
+    ids = _idx["by_sym"].get(sym, [])
+    return ids[0] if len(ids) == 1 else fallback
+
+
+async def pap_tickers():
+    data, st = await _get(f"{PAP}/tickers", {"quotes": "INR"}, 600, "pap-tickers")
+    return (data if isinstance(data, list) else None), st
 BN = "https://data-api.binance.vision/api/v3/klines"
 
 
@@ -20,7 +59,7 @@ def _cg_row(m):
 
 def _pap_row(t):
     q = t["quotes"]["INR"]
-    return {"id": t["id"].split("-", 1)[1] if "-" in t["id"] else t["id"], "symbol": t["symbol"].lower(), "name": t["name"],
+    return {"id": to_cg_id(t["symbol"], t["name"], t["id"].split("-", 1)[1] if "-" in t["id"] else t["id"]), "symbol": t["symbol"].lower(), "name": t["name"],
             "image": f"https://static.coinpaprika.com/coin/{t['id']}/logo.png", "price": q.get("price"),
             "change_24h": q.get("percent_change_24h"), "market_cap": q.get("market_cap"), "volume": q.get("volume_24h"), "rank": t.get("rank")}
 
@@ -30,7 +69,8 @@ async def top_markets():
     data, st = await _get(f"{CG}/coins/markets", {"vs_currency": "inr", "order": "market_cap_desc", "per_page": 250, "page": 1}, 300, "top250")
     if data:
         return [_cg_row(m) for m in data], ("live" if st == "live" else "cached"), "CoinGecko"
-    data, st = await _get(f"{PAP}/tickers", {"quotes": "INR"}, 300, "pap-tickers")
+    await coin_index()
+    data, st = await pap_tickers()
     if data:
         rows = sorted((t for t in data if t.get("rank")), key=lambda t: t["rank"])[:250]
         return [_pap_row(t) for t in rows], ("live" if st == "live" else "cached"), "CoinPaprika"
@@ -63,7 +103,7 @@ async def overview():
                     for c in t["coins"][:8]]
         trending_src = "CoinGecko trending searches"
     else:
-        trending = sorted(rows[:100], key=lambda r: -(r["volume"] or 0))[:8]
+        trending = sorted((r for r in rows[:100] if r["symbol"] not in STABLE_SYMS), key=lambda r: -(r["volume"] or 0))[:8]
         trending_src = "Highest 24h volume (trending feed unavailable)"
     liquid = [r for r in rows[:150] if r["change_24h"] is not None]
     liquid.sort(key=lambda r: r["change_24h"])
@@ -73,13 +113,20 @@ async def overview():
 
 
 async def search(q):
-    res = await search_coins(q)
     rows, _, _ = await top_markets()
     by_id = {r["id"]: r for r in rows}
-    if q and not res:
-        ql = q.lower()
-        res = [{"id": r["id"], "symbol": r["symbol"], "name": r["name"], "thumb": r["image"]} for r in rows
-               if ql in r["id"] or ql == r["symbol"] or ql in r["name"].lower()][:12]
+    res = []
+    if q:
+        data, _ = await _get(f"{CG}/search", {"query": q.lower()}, 3600, f"s:{q.lower()}")
+        if data and data.get("coins") is not None:
+            res = [{"id": c["id"], "symbol": c["symbol"].lower(), "name": c["name"], "thumb": c.get("large") or c.get("thumb")} for c in data["coins"][:12]]
+        else:
+            ql = q.lower().strip()
+            idx = await coin_index()
+            rank = {r["id"]: r["rank"] or 9999 for r in rows}
+            hits = [r for r in idx["by_id"].values() if r[1] == ql or r[2].lower().startswith(ql) or r[0] == ql]
+            hits.sort(key=lambda r: (rank.get(r[0], 99999), r[1] != ql))
+            res = [{"id": r[0], "symbol": r[1], "name": r[2], "thumb": None} for r in hits[:12]]
     if not q:
         res = [{"id": r["id"], "symbol": r["symbol"], "name": r["name"], "thumb": r["image"]} for r in rows[:10]] or res
     return [{**c, "thumb": c.get("thumb") or by_id.get(c["id"], {}).get("image"),
@@ -133,15 +180,20 @@ async def coin_detail(cid, symbol=None):
         }
     if not symbol:
         return None
-    pid = f"{symbol.lower()}-{cid}"
-    c, _ = await _get(f"{PAP}/coins/{pid}", {}, 3600, f"pap-coin:{pid}")
-    t, tst = await _get(f"{PAP}/tickers/{pid}", {"quotes": "INR"}, 300, f"pap-tick:{pid}")
+    idx = await coin_index()
+    name = (idx["by_id"].get(cid) or [None, None, ""])[2].lower()
+    tickers, tst = await pap_tickers()
+    sym = symbol.upper()
+    cands = [x for x in (tickers or []) if x["symbol"] == sym]
+    t = next((x for x in cands if x["name"].lower() == name), None) or (min(cands, key=lambda x: x.get("rank") or 99999) if cands else None)
     if not t or not t.get("quotes"):
-        return None
+        return await _binance_detail(cid, symbol, idx)
+    pid = t["id"]
+    c, _ = await _get(f"{PAP}/coins/{pid}", {}, 21600, f"pap-coin:{pid}")
     q = t["quotes"]["INR"]
     c = c or {}
     lk = c.get("links") or {}
-    socials = [{"name": k.title(), "url": v[0]} for k, v in lk.items() if k in ("reddit", "source_code", "facebook", "youtube") and v]
+    socials = [{"name": k.replace("_", " ").title(), "url": v[0]} for k, v in lk.items() if k in ("reddit", "source_code", "facebook", "youtube") and v]
     socials += [{"name": x.get("type", "link").title(), "url": x["url"]} for x in (c.get("links_extended") or []) if x.get("type") == "twitter"][:1]
     return {
         "id": cid, "symbol": symbol.lower(), "name": t["name"], "image": c.get("logo"), "rank": t.get("rank"),
@@ -150,13 +202,30 @@ async def coin_detail(cid, symbol=None):
         "circulating_supply": t.get("circulating_supply"), "total_supply": t.get("total_supply"), "max_supply": t.get("max_supply") or None,
         "ath": q.get("ath_price"), "ath_date": q.get("ath_date"), "ath_change": q.get("percent_from_price_ath"), "atl": None, "atl_date": None,
         "change": {"24h": q.get("percent_change_24h"), "7d": q.get("percent_change_7d"), "30d": q.get("percent_change_30d"), "1y": q.get("percent_change_1y")},
-        "description": _clean(c.get("description"), 2500), "categories": [x["name"] for x in (c.get("tags") or [])][:6],
-        "hashing_algorithm": c.get("hash_algorithm"), "platforms": [c["proof_type"]] if c.get("proof_type") else [],
+        "description": re.sub(r"\s*Source:\s*CoinPaprika\.com\s*$", "", _clean(c.get("description"), 2500)), "categories": [x["name"] for x in (c.get("tags") or [])][:6],
+        "hashing_algorithm": c.get("hash_algorithm") if c.get("hash_algorithm") not in (None, "None", "") else None, "platforms": [c["proof_type"]] if c.get("proof_type") else [],
         "genesis_date": (c.get("started_at") or "")[:10] or None,
         "website": (lk.get("website") or [None])[0], "whitepaper": (c.get("whitepaper") or {}).get("link"),
         "explorers": (lk.get("explorer") or [])[:3], "socials": socials,
         "source": "CoinPaprika (CoinGecko unavailable)", "status": "live" if tst == "live" else "cached",
     }
+
+
+async def _binance_detail(cid, symbol, idx):
+    k, st = await binance_klines(symbol, "1d", 366)
+    fx = await _usd_inr()
+    if not k or not fx or len(k) < 2:
+        return None
+    closes = [float(r[4]) * fx for r in k]
+    ch = lambda n: (closes[-1] / closes[-1 - n] - 1) * 100 if len(closes) > n else None
+    row = idx["by_id"].get(cid) or [cid, symbol.lower(), symbol.upper()]
+    return {"id": cid, "symbol": symbol.lower(), "name": row[2], "image": None, "rank": None, "price": closes[-1],
+            "market_cap": None, "fdv": None, "volume": float(k[-1][7]) * fx, "high_24h": float(k[-1][2]) * fx, "low_24h": float(k[-1][3]) * fx,
+            "circulating_supply": None, "total_supply": None, "max_supply": None, "ath": None, "ath_date": None, "ath_change": None,
+            "atl": None, "atl_date": None, "change": {"24h": ch(1), "7d": ch(7), "30d": ch(30), "1y": ch(365)},
+            "description": "", "categories": [], "hashing_algorithm": None, "platforms": [], "genesis_date": None,
+            "website": None, "whitepaper": None, "explorers": [], "socials": [],
+            "source": "Binance only — coin metadata providers are temporarily rate-limited", "status": "live" if st == "live" else "cached"}
 
 
 PERIOD_BN = {"1": ("1h", 25), "7": ("4h", 43), "30": ("1d", 31), "90": ("1d", 91), "365": ("1d", 366), "max": ("1w", 1000)}
