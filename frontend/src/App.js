@@ -8,6 +8,7 @@ import Layout from "@/components/Layout";
 import Explore from "@/pages/Explore";
 import CoinDetail from "@/pages/CoinDetail";
 import ChartAnalyst from "@/pages/ChartAnalyst";
+import Sip from "@/pages/Sip";
 import Portfolio from "@/pages/Portfolio";
 import Health from "@/pages/Health";
 import Analyst from "@/pages/Analyst";
@@ -32,6 +33,7 @@ function AppRouter() {
         <Route path="/home" element={<Explore />} />
         <Route path="/coin/:id" element={<CoinDetail />} />
         <Route path="/chart" element={<ChartAnalyst />} />
+        <Route path="/sip" element={<Sip />} />
         <Route path="/dashboard" element={<Navigate to="/portfolio" replace />} />
         <Route path="/portfolio" element={<Portfolio />} />
         <Route path="/health" element={<Health />} />

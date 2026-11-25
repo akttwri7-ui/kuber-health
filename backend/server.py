@@ -24,6 +24,7 @@ from market import search_coins
 from analytics import build_summary, build_history, volatility_and_drawdown, compute_health, compute_alerts, goal_progress
 from market import _usd_inr as get_fx
 import explore
+import sip
 import market
 import ta
 from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
@@ -690,6 +691,63 @@ async def chart_analyze(body: ChartAskIn, user=Depends(get_current_user)):
     convo = "\n".join(f"{m.get('role', 'user').upper()}: {m.get('content', '')[:1200]}" for m in body.context[-4:])
     prompt = (f"Earlier in this chart session:\n{convo}\n\n" if convo else "") + (f"QUESTION: {body.question}" if body.question else "Analyse the chart now.")
     return llm_stream(system, prompt)
+
+
+# ---------------- SIP Planner ----------------
+class SipCalcIn(BaseModel):
+    coin_id: str = Field(min_length=1, max_length=100)
+    symbol: str = Field(min_length=1, max_length=15)
+    amount: float = Field(gt=0, lt=1e9)
+    months: int = Field(ge=3, le=120)
+    frequency: str = Field(default="monthly", pattern="^(monthly|weekly)$")
+
+
+@api.post("/sip/calculate")
+async def sip_calculate(body: SipCalcIn, user=Depends(get_current_user)):
+    return await sip.calculate(body.coin_id, body.symbol, body.amount, body.months, body.frequency)
+
+
+class SipStrategyIn(BaseModel):
+    coin_id: str = Field(min_length=1, max_length=100)
+    symbol: str = Field(min_length=1, max_length=15)
+    name: str = Field(min_length=1, max_length=80)
+    interval: str = Field(pattern="^(1h|4h|1d|1w)$")
+    budget: Optional[float] = Field(default=None, gt=0, lt=1e11)
+    risk: str = Field(pattern="^(conservative|moderate|aggressive)$")
+    horizon_years: float = Field(gt=0, le=30)
+
+
+@api.post("/sip/strategy")
+async def sip_strategy(body: SipStrategyIn, user=Depends(get_current_user)):
+    uid = user["user_id"]
+    hs = await user_holdings(uid)
+    summary = await build_summary(hs)
+    settings = await get_settings(uid)
+    row = next((r for r in summary["holdings"] if r["coin_id"] == body.coin_id), None)
+    ctx = {"portfolio_value": summary["total_value"], "holdings_count": len(summary["holdings"]),
+           "quantity": row and row["quantity"], "value": row and row["value"], "allocation_pct": row and row["allocation"],
+           "pnl": row and row["pnl"], "pnl_pct": row and row["pnl_pct"], "avg_price": row and row["avg_price"]}
+    return await sip.strategy({**body.model_dump(), "load_chart": load_chart}, ctx, settings["concentration_limit"])
+
+
+SIP_PROMPT = """You are Kuber AI, explaining an investment-planning recommendation to a beginner crypto investor in India (INR ₹).
+The DECISION below was computed by Kuber's rule-based engine from live chart indicators, the user's risk profile, budget, horizon and portfolio.
+Explain it — do NOT change the strategy, percentages or rupee amounts, and never invent numbers or levels not in the data.
+Distinguish the chart timeframe ({interval}, with {htf} confirmation) from the user's investment horizon ({horizon} years).
+If the decision is WAIT or NO NEW POSITION, say clearly that investing zero new money right now is a valid choice.
+No guarantees or price predictions. Use markdown sections: ## Market assessment, ## Why this strategy, ## Key technical signals, ## Portfolio fit, ## Risks, ## What would change this view. Under 350 words, **bold** key numbers.
+
+DECISION:
+{data}"""
+
+
+@api.post("/sip/explain/{did}")
+async def sip_explain(did: str, user=Depends(get_current_user)):
+    d = sip.get_decision(did)
+    if not d:
+        raise HTTPException(404, "Recommendation expired — please run the analysis again")
+    return llm_stream(SIP_PROMPT.format(interval=d["interval"], htf=d["higher_timeframe"], horizon=d["horizon_years"], data=json.dumps(d, default=str)),
+                      "Explain this recommendation.")
 
 
 @api.get("/")

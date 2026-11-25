@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Compass, CandlestickChart, Wallet, HeartPulse, Sparkles, ShieldAlert, Target, Settings, LogOut, Bell } from "lucide-react";
+import { Compass, CandlestickChart, PiggyBank, Wallet, HeartPulse, Sparkles, ShieldAlert, Target, Settings, LogOut, Bell } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useApi, http } from "@/lib/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -10,6 +10,7 @@ export const NAV = [
   { to: "/portfolio", label: "My Portfolio", icon: Wallet, short: "Portfolio" },
   { to: "/health", label: "Portfolio Health", icon: HeartPulse, short: "Health" },
   { to: "/chart", label: "AI Chart Analyst", icon: CandlestickChart, ai: true, short: "Charts" },
+  { to: "/sip", label: "SIP", icon: PiggyBank, short: "SIP" },
   { to: "/analyst", label: "AI Portfolio Analyst", icon: Sparkles, ai: true, short: "AI Chat" },
   { to: "/risk", label: "Risk Monitor", icon: ShieldAlert, short: "Risk" },
   { to: "/goals", label: "Investment Goals", icon: Target, short: "Goals" },

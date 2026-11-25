@@ -151,4 +151,33 @@ def compute(candles):
         "rule_based_trend": trend, "latest_pattern": pattern(candles), "support": sup, "resistance": res,
         "candles": len(candles),
     }
+    snap.update(extras(candles, r))
     return series, snap
+
+
+def extras(candles, r):
+    """ATR, breakout/breakdown and RSI divergence over recent candles."""
+    out = {"atr14_pct": None, "breakout": None, "divergence": None}
+    if len(candles) < 40:
+        return out
+    trs = [max(c["high"] - c["low"], abs(c["high"] - p["close"]), abs(c["low"] - p["close"])) for p, c in zip(candles, candles[1:])]
+    atr = sum(trs[:14]) / 14
+    for t in trs[14:]:
+        atr = (atr * 13 + t) / 14
+    last = candles[-1]["close"]
+    out["atr14_pct"] = atr / last * 100
+    prev = candles[-21:-1]
+    hi, lo = max(c["high"] for c in prev), min(c["low"] for c in prev)
+    out["breakout"] = "breakout above 20-candle high" if last > hi else "breakdown below 20-candle low" if last < lo else "inside 20-candle range"
+    a, b = candles[-30:-15], candles[-15:]
+    ra, rb = r[-30:-15], r[-15:]
+    if None not in ra + rb:
+        ia = min(range(15), key=lambda i: a[i]["low"]); ib = min(range(15), key=lambda i: b[i]["low"])
+        ja = max(range(15), key=lambda i: a[i]["high"]); jb = max(range(15), key=lambda i: b[i]["high"])
+        if b[ib]["low"] < a[ia]["low"] and rb[ib] > ra[ia] + 2:
+            out["divergence"] = "bullish (lower price low, higher RSI low)"
+        elif b[jb]["high"] > a[ja]["high"] and rb[jb] < ra[ja] - 2:
+            out["divergence"] = "bearish (higher price high, lower RSI high)"
+        else:
+            out["divergence"] = "none detected"
+    return out
